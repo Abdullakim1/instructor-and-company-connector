@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated } from "./replitAuth";
+import { createClient } from '@supabase/supabase-js';
 import {
   insertCompanySchema,
   insertInstructorSchema,
@@ -11,14 +11,34 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Auth middleware
-  await setupAuth(app);
+  // Enhanced Supabase auth middleware
+  app.use(async (req: any, res, next) => {
+    if (req.headers.authorization) {
+      const token = req.headers.authorization.split(' ')[1];
+      try {
+        const { data: { user }, error } = await supabase.auth.getUser(token);
+        if (!error) req.user = user;
+      } catch (error) {
+        console.error('Auth error:', error);
+      }
+    }
+    next();
+  });
 
   // Auth routes
-  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+  app.get('/api/auth/user', async (req: any, res) => {
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized - No user session" });
+    }
+    
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const user = await storage.getUser(userId);
       
       if (!user) {
@@ -41,9 +61,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Company routes
-  app.post('/api/companies', isAuthenticated, async (req: any, res) => {
+  app.post('/api/companies', async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      const userId = req.user.id;
       const companyData = insertCompanySchema.parse({ ...req.body, userId });
       
       const company = await storage.createCompany(companyData);
@@ -54,8 +78,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/companies/:id', isAuthenticated, async (req: any, res) => {
+  app.put('/api/companies/:id', async (req: any, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
       const { id } = req.params;
       const updates = insertCompanySchema.partial().parse(req.body);
       
@@ -68,9 +96,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Instructor routes
-  app.post('/api/instructors', isAuthenticated, async (req: any, res) => {
+  app.post('/api/instructors', async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      const userId = req.user.id;
       const instructorData = insertInstructorSchema.parse({ ...req.body, userId });
       
       const instructor = await storage.createInstructor(instructorData);
@@ -81,8 +113,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/instructors/:id', isAuthenticated, async (req: any, res) => {
+  app.put('/api/instructors/:id', async (req: any, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
       const { id } = req.params;
       const updates = insertInstructorSchema.partial().parse(req.body);
       
@@ -114,9 +150,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Training request routes
-  app.post('/api/training-requests', isAuthenticated, async (req: any, res) => {
+  app.post('/api/training-requests', async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      const userId = req.user.id;
       const company = await storage.getCompanyByUserId(userId);
       
       if (!company) {
@@ -154,9 +194,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/training-requests', isAuthenticated, async (req: any, res) => {
+  app.get('/api/training-requests', async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      const userId = req.user.id;
       const userType = req.query.type;
 
       if (userType === 'company') {
@@ -177,8 +221,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/training-requests/:id', isAuthenticated, async (req: any, res) => {
+  app.put('/api/training-requests/:id', async (req: any, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
       const { id } = req.params;
       const updates = req.body;
       
@@ -191,9 +239,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Application routes
-  app.post('/api/applications', isAuthenticated, async (req: any, res) => {
+  app.post('/api/applications', async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      const userId = req.user.id;
       const instructor = await storage.getInstructorByUserId(userId);
       
       if (!instructor) {
@@ -227,8 +279,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/applications', isAuthenticated, async (req: any, res) => {
+  app.get('/api/applications', async (req: any, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
       const { requestId, instructorId } = req.query;
 
       if (requestId) {
@@ -246,8 +302,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/applications/:id', isAuthenticated, async (req: any, res) => {
+  app.put('/api/applications/:id', async (req: any, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
       const { id } = req.params;
       const updates = req.body;
       
@@ -260,8 +320,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Contract routes
-  app.post('/api/contracts', isAuthenticated, async (req: any, res) => {
+  app.post('/api/contracts', async (req: any, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
       const contractData = req.body;
       const contract = await storage.createContract(contractData);
       
@@ -281,9 +345,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Review routes
-  app.post('/api/reviews', isAuthenticated, async (req: any, res) => {
+  app.post('/api/reviews', async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      const userId = req.user.id;
       const reviewData = insertReviewSchema.parse({ 
         ...req.body, 
         reviewerId: userId 
@@ -309,9 +377,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Notification routes
-  app.get('/api/notifications', isAuthenticated, async (req: any, res) => {
+  app.get('/api/notifications', async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      const userId = req.user.id;
       const notifications = await storage.getNotificationsByUser(userId);
       res.json(notifications);
     } catch (error) {
@@ -321,9 +393,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // User type setup route
-  app.put('/api/user/setup', isAuthenticated, async (req: any, res) => {
+  app.put('/api/user/setup', async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      const userId = req.user.id;
       const { userType } = req.body;
 
       if (!['company', 'instructor'].includes(userType)) {
@@ -332,10 +408,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const user = await storage.upsertUser({
         id: userId,
-        email: req.user.claims.email,
-        firstName: req.user.claims.first_name,
-        lastName: req.user.claims.last_name,
-        profileImageUrl: req.user.claims.profile_image_url,
+        email: req.user.email,
+        firstName: req.user.user_metadata.first_name,
+        lastName: req.user.user_metadata.last_name,
+        profileImageUrl: req.user.user_metadata.profile_image_url,
         userType,
       });
 
